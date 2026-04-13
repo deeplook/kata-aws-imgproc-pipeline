@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.ruff_cache/
+dist/
+*.egg-info/
+
+
+# Lambda build artifacts
+lambdas/ingest/package/
+lambdas/search/package/
+lambdas/ingest/handler.zip
+lambdas/search/handler.zip
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfplan
+terraform/.terraform/
+terraform/modules/**/.terraform/
+
+# Runtime outputs
+.tf_outputs.env
+
+# Test images
+test-image.jpg
+*.jpg.tmp
+
+# OS
+.DS_Store
