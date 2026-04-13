@@ -19,6 +19,6 @@ variable "s3_bucket_arn" {
 }
 
 variable "search_api_url" {
-  description = "Base URL of the API Gateway search endpoint"
+  description = "Base URL of the API Gateway search endpoint (e.g. https://abc.execute-api.region.amazonaws.com)"
   type        = string
 }

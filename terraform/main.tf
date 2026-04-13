@@ -32,13 +32,12 @@ module "search" {
   aws_region          = var.aws_region
 }
 
-# TODO Stage 8: uncomment and wire in the frontend module
-# module "frontend" {
-#   source = "./modules/frontend"
-#
-#   aws_region      = var.aws_region
-#   collection_name = var.collection_name
-#   s3_bucket_name  = module.storage.s3_bucket_name
-#   s3_bucket_arn   = module.storage.s3_bucket_arn
-#   search_api_url  = module.search.api_url
-# }
+module "frontend" {
+  source = "./modules/frontend"
+
+  aws_region      = var.aws_region
+  collection_name = var.collection_name
+  s3_bucket_name  = module.storage.s3_bucket_name
+  s3_bucket_arn   = module.storage.s3_bucket_arn
+  search_api_url  = module.search.api_url
+}

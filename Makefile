@@ -19,12 +19,12 @@ help:
 	@echo "  logs-ingest    Tail CloudWatch logs for the ingest Lambda"
 	@echo "  logs-search    Tail CloudWatch logs for the search Lambda"
 	@echo "  wait-opensearch  Poll until OpenSearch collection is ACTIVE"
-	@echo "  search         [TODO Stage 6] curl the search endpoint (QUERY=beach)"
-	@echo "  smoke-ingest   [TODO Stage 7] Poll CloudWatch until ingest pipeline succeeds"
-	@echo "  smoke-search   [TODO Stage 7] curl the search endpoint and assert results"
-	@echo "  smoke-frontend [TODO Stage 8] Poll App Runner URL until HTTP 200"
-	@echo "  open-gallery   [TODO Stage 8] Open the gallery web app in a browser"
-	@echo "  e2e            Full lifecycle: deploy, upload, smoke-ingest, search, smoke-search, destroy"
+	@echo "  search         curl the search endpoint (QUERY=beach)"
+	@echo "  smoke-ingest   Poll CloudWatch until ingest pipeline succeeds"
+	@echo "  smoke-search   curl the search endpoint and assert results"
+	@echo "  open-gallery   Open the App Runner gallery in a browser"
+	@echo "  smoke-frontend Assert the gallery web app returns HTTP 200"
+	@echo "  e2e            Full lifecycle: deploy, upload, smoke-ingest, search, smoke-search, smoke-frontend, destroy"
 	@echo "  clean          Remove build artifacts and caches"
 
 .PHONY: install
@@ -76,7 +76,7 @@ deploy: setup package
 	@echo "export OPENSEARCH_ENDPOINT=$$(cd terraform && terraform output -raw opensearch_endpoint)" >> .tf_outputs.env
 	@echo "export SEARCH_LAMBDA=$$(cd terraform && terraform output -raw search_lambda_name)" >> .tf_outputs.env
 	@echo "export API_URL=$$(cd terraform && terraform output -raw api_url)" >> .tf_outputs.env
-	@echo "export GALLERY_URL=$$(cd terraform && terraform output -raw gallery_url 2>/dev/null || echo '')" >> .tf_outputs.env
+	@echo "export GALLERY_URL=$$(cd terraform && terraform output -raw gallery_url)" >> .tf_outputs.env
 
 .PHONY: destroy
 destroy:
@@ -191,27 +191,6 @@ smoke-search:
 		echo "smoke-search: FAILED (0 results for query '$(QUERY)')"; exit 1; \
 	fi
 
-.PHONY: smoke-frontend
-smoke-frontend:
-	@if [ ! -f .tf_outputs.env ]; then \
-		echo "Outputs file not found. Please run 'make deploy' first."; \
-		exit 1; \
-	fi
-	@. .tf_outputs.env && \
-	if [ -z "$$GALLERY_URL" ]; then \
-		echo "smoke-frontend: SKIPPED (GALLERY_URL not set — Stage 8 not deployed)"; exit 0; \
-	fi; \
-	echo "Polling $$GALLERY_URL for HTTP 200..."; \
-	for i in $$(seq 1 12); do \
-		STATUS=$$(curl -s -o /dev/null -w "%{http_code}" "$$GALLERY_URL"); \
-		if [ "$$STATUS" = "200" ]; then \
-			echo "smoke-frontend: PASSED"; exit 0; \
-		fi; \
-		echo "  attempt $$i/12 — status=$$STATUS, retrying in 15s..."; \
-		sleep 15; \
-	done; \
-	echo "smoke-frontend: FAILED — no HTTP 200 after 12 attempts"; exit 1
-
 .PHONY: open-gallery
 open-gallery:
 	@if [ ! -f .tf_outputs.env ]; then \
@@ -219,10 +198,26 @@ open-gallery:
 		exit 1; \
 	fi
 	@. .tf_outputs.env && \
-	if [ -z "$$GALLERY_URL" ]; then \
-		echo "GALLERY_URL not set — deploy Stage 8 first."; exit 1; \
-	fi; \
+	echo "Opening $$GALLERY_URL" && \
 	open "$$GALLERY_URL" 2>/dev/null || xdg-open "$$GALLERY_URL"
+
+.PHONY: smoke-frontend
+smoke-frontend:
+	@if [ ! -f .tf_outputs.env ]; then \
+		echo "Outputs file not found. Please run 'make deploy' first."; \
+		exit 1; \
+	fi
+	@. .tf_outputs.env && \
+	echo "Probing $$GALLERY_URL ..."; \
+	for i in $$(seq 1 12); do \
+		STATUS=$$(curl -s -o /dev/null -w "%{http_code}" "$$GALLERY_URL" 2>/dev/null); \
+		if [ "$$STATUS" = "200" ]; then \
+			echo "smoke-frontend: PASSED (HTTP 200)"; exit 0; \
+		fi; \
+		echo "  attempt $$i/12 — HTTP $$STATUS, retrying in 15s..."; \
+		sleep 15; \
+	done; \
+	echo "smoke-frontend: FAILED — gallery did not return 200 after 12 attempts"; exit 1
 
 .PHONY: e2e
 e2e:

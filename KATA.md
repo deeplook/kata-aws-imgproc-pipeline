@@ -15,9 +15,8 @@ An event-driven pipeline with semantic search:
 5. Lambda writes structured metadata to **DynamoDB**
 6. Lambda indexes the embedding in **OpenSearch Serverless**
 7. A **search Lambda** exposed via **API Gateway** accepts natural-language queries and returns semantically ranked results
-8. A **FastAPI web app** deployed on **App Runner** provides a browser-based gallery: drag-and-drop upload, text search, reverse image search, and a live image count
 
-The finished system is ~200 lines of Python per Lambda, a FastAPI gallery app, a Terraform module structure, and a Makefile that orchestrates the entire lifecycle.
+The finished system is ~200 lines of Python, a Terraform module structure, and a Makefile that orchestrates the entire lifecycle.
 
 ---
 
@@ -34,8 +33,6 @@ By completing this kata you will be able to:
 7. Package Lambda functions with third-party dependencies (opensearch-py, requests-aws4auth)
 8. Model least-privilege IAM in Terraform, growing permissions one stage at a time
 9. Automate the full lifecycle with Make: `deploy → upload → smoke → destroy`
-10. Build and deploy a containerised FastAPI web app to AWS App Runner via ECR
-11. Use Terraform `null_resource` + `local-exec` to integrate Docker build/push into `terraform apply`
 
 ---
 
@@ -63,19 +60,14 @@ kata-aws-imgproc-pipeline/
 ├── .python-version                  # 3.12
 ├── lambdas/
 │   ├── ingest/handler.py            # ingest Lambda (Stages 1–5)
-│   └── search/handler.py            # search Lambda (Stages 6–8)
-├── app/
-│   ├── main.py                      # FastAPI gallery web app (Stage 8)
-│   ├── Dockerfile                   # container image definition (Stage 8)
-│   └── pyproject.toml               # app dependencies (Stage 8)
+│   └── search/handler.py            # search Lambda (Stage 6)
 └── terraform/
     ├── main.tf                      # root module
     ├── variables.tf, outputs.tf, versions.tf
     └── modules/
         ├── storage/                 # S3 + DynamoDB
         ├── ingestion/               # ingest Lambda + Rekognition + OpenSearch
-        ├── search/                  # search Lambda + API Gateway
-        └── frontend/                # ECR + App Runner (Stage 8)
+        └── search/                  # search Lambda + API Gateway
 ```
 
 ---
@@ -93,7 +85,6 @@ The repository pre-provides the complete Terraform module structure (with `???` 
 | 5 | `lambdas/ingest/handler.py` — OpenSearch index; Terraform collection + policies |
 | 6 | `lambdas/search/handler.py` — embed query, k-NN search; Terraform search Lambda + API GW |
 | 7 | Both handlers — error handling; Makefile smoke targets; `make e2e` |
-| 8 | `app/main.py` — FastAPI endpoints; `terraform/modules/frontend/` — ECR + App Runner; Makefile frontend targets |
 
 ---
 
@@ -210,7 +201,7 @@ make logs-ingest
 3. Extract labels from the response. Each label has `Name` and `Confidence`.
 4. Log each label: `  - Dog: 98.45%`
 5. Return the list of label names in the response body.
-6. In `terraform/modules/ingestion/main.tf`, review the pre-filled `rekognition:DetectLabels` IAM statement, then redeploy:
+6. In `terraform/modules/ingestion/main.tf`, fill in the `rekognition:DetectLabels` IAM statement (replace `"???"`), then redeploy:
 
 ```bash
 make deploy
@@ -241,7 +232,7 @@ make logs-ingest
   ```
 - `MinConfidence=75` filters low-confidence results — lower it to see more labels
 - Rekognition must be in the same AWS region as the Lambda function to use S3Object references
-- IAM statement (pre-filled in the skeleton — review it):
+- IAM statement to add:
   ```hcl
   {
     Action   = "rekognition:DetectLabels"
@@ -271,8 +262,9 @@ make logs-ingest
    - `labels`: a list of label names
    - `upload_timestamp`: current UTC time as ISO 8601 string
 3. Log `"DynamoDB: record written"` on success.
-4. Open `terraform/modules/storage/main.tf`. Review the pre-filled DynamoDB table resource — confirm `billing_mode`, `hash_key`, and the `attribute` block match Stage 3's goal.
-5. In `terraform/modules/ingestion/main.tf`, review the pre-filled DynamoDB IAM statement. Redeploy:
+4. Open `terraform/modules/storage/main.tf`. Fill in the DynamoDB table resource:
+   - `name`, `billing_mode`, `hash_key`, and the `attribute` block
+5. In `terraform/modules/ingestion/main.tf`, fill in the DynamoDB IAM statement. Redeploy:
 
 ```bash
 make deploy
@@ -304,7 +296,7 @@ aws dynamodb scan --table-name photo-metadata
   })
   print("DynamoDB: record written")
   ```
-- The `TABLE_NAME` environment variable is set by Terraform (already in the Lambda `environment` block)
+- The `TABLE_NAME` environment variable is set by Terraform (already in the Lambda `environment` block — fill in the `???`)
 - DynamoDB Terraform resource:
   ```hcl
   resource "aws_dynamodb_table" "metadata" {
@@ -360,7 +352,7 @@ aws dynamodb scan --table-name photo-metadata
        ExpressionAttributeValues={":e": embedding_decimal},
    )
    ```
-6. In `terraform/modules/ingestion/main.tf`, review the pre-filled `bedrock:InvokeModel` IAM statement. Redeploy.
+6. In `terraform/modules/ingestion/main.tf`, fill in the `bedrock:InvokeModel` IAM statement. Redeploy.
 
 #### Verification
 - CloudWatch log contains `"embedding: 1024 dimensions"`
@@ -387,7 +379,7 @@ aws dynamodb scan --table-name photo-metadata
   ```
 - The Titan model supports both `inputText` and `inputImage` (base64). Using `inputText` in the core kata keeps the code simple — you can add `inputImage` as a stretch goal
 - boto3's DynamoDB *resource* client (`boto3.resource('dynamodb')`) does not accept Python `float`. Convert with `Decimal(str(v))`. The *client* (`boto3.client('dynamodb')`) accepts raw numbers — but requires manual type annotations.
-- IAM statement (pre-filled in the skeleton — review it):
+- IAM statement to add:
   ```hcl
   {
     Action   = "bedrock:InvokeModel"
@@ -425,10 +417,10 @@ aws dynamodb scan --table-name photo-metadata
 This is the most complex stage. It introduces third-party library packaging and a new AWS service.
 
 1. **Terraform first** — OpenSearch Serverless collections take 5–10 minutes to become `ACTIVE`. Provision the infrastructure before writing Python:
-   - In `terraform/modules/ingestion/main.tf`, review the pre-filled:
+   - In `terraform/modules/ingestion/main.tf`, fill in:
      - `aws_opensearchserverless_collection.gallery`: `name` and `type`
-     - The encryption, network, and data access policies
-     - The `aoss:APIAccessAll` IAM statement
+   - The encryption, network, and data access policies are already stubbed — review them
+   - In the `aws_iam_role_policy.ingest_policy`, fill in the `aoss:APIAccessAll` statement
    - Redeploy and wait: `make deploy && make wait-opensearch`
 
 2. **Rebuild the Lambda zip with dependencies:**
@@ -498,9 +490,7 @@ make logs-ingest   # confirm "OpenSearch: indexed"
   INDEX_NAME = "photos"
 
   def _ensure_index(client):
-      if client.indices.exists(index=INDEX_NAME):
-          return
-      try:
+      if not client.indices.exists(index=INDEX_NAME):
           client.indices.create(index=INDEX_NAME, body={
               "settings": {"index": {"knn": True}},
               "mappings": {
@@ -519,13 +509,7 @@ make logs-ingest   # confirm "OpenSearch: indexed"
                   }
               },
           })
-      except Exception as e:
-          # Concurrent Lambda invocations may both attempt index creation;
-          # swallow resource_already_exists_exception so both can proceed.
-          if "resource_already_exists_exception" not in str(e).lower():
-              raise
   ```
-  > **Race condition:** if two images are uploaded simultaneously, two Lambda containers cold-start concurrently. Both see the index doesn't exist and race to create it. The loser gets `resource_already_exists_exception` — which without this guard propagates as a fatal error and causes that image to be skipped entirely.
 - Indexing the document:
   ```python
   client = _get_opensearch_client()
@@ -541,9 +525,9 @@ make logs-ingest   # confirm "OpenSearch: indexed"
 - If you see `IndicesClient.exists() takes 1 positional argument but 2 were given` (or `create()`), you are on opensearch-py v3 — pass all parameters as keyword arguments: `client.indices.exists(index=INDEX_NAME)`, `client.indices.create(index=INDEX_NAME, body={...})`
 - OpenSearch Serverless does not support explicit document IDs via the index API — omit `id=` and rely on auto-generated IDs. The `image_key` field in the document body still identifies the source image for search results.
 - OpenSearch Serverless requires the collection to be `ACTIVE` before indexing — `make wait-opensearch` polls for this
-- The `OPENSEARCH_ENDPOINT` environment variable is set by Terraform (pre-filled in the Lambda environment block — `collection_endpoint` already includes `https://`)
+- The `OPENSEARCH_ENDPOINT` environment variable is set by Terraform; fill in the `???` in the Lambda environment block
 - `make package` builds the Lambda zip with `opensearch-py` and `requests-aws4auth` bundled
-- IAM statement for AOSS (pre-filled in the skeleton — review it):
+- IAM statement for AOSS:
   ```hcl
   {
     Action   = "aoss:APIAccessAll"
@@ -818,178 +802,6 @@ make e2e
 
 ---
 
-### Stage 8 — App Runner Frontend
-
-Turn your invisible API into a real web gallery. In this stage you build a FastAPI web app, containerise it, push the image to ECR from inside `terraform apply`, and deploy it on App Runner — all without leaving Terraform.
-
-**What you implement:**
-
-**`app/main.py`:**
-
-1. `POST /upload` — accept `files: list[UploadFile]`, upload each to `S3_BUCKET` with `s3.put_object`, return `{"keys": [...]}`
-2. `GET /search?q=<query>` — proxy to `SEARCH_API_URL/search`, deduplicate results by `key`, add a presigned S3 GET URL (1-hour TTL) to each hit
-3. `POST /search-by-image` — read the uploaded image bytes, call `rekognition.detect_labels(Image={"Bytes": content})`, join label names into a query string, then call the existing `GET /search` route
-4. `GET /stats` — proxy to `SEARCH_API_URL/count` and return `{"count": <n>}`
-
-**`lambdas/search/handler.py`:**
-
-5. Before the existing search logic, add a branch for `GET /count`:
-   - Check `event.get("rawPath", "").endswith("/count")`
-   - Call `client.count(index=INDEX_NAME)["count"]` (return 0 if the index doesn't exist yet)
-   - Return `{"statusCode": 200, "body": json.dumps({"count": count})}`
-
-**`terraform/modules/search/main.tf`:**
-
-6. Uncomment the `GET /count` API Gateway route that reuses the existing Lambda integration
-
-**`terraform/main.tf` and `terraform/outputs.tf`:**
-
-7. Uncomment the `frontend` module block and the `gallery_url` output
-
-#### Verification
-
-```bash
-make deploy          # builds Docker image, pushes to ECR, provisions App Runner (~2 min)
-make smoke-frontend  # polls GALLERY_URL until HTTP 200
-make open-gallery    # opens the gallery in your browser
-```
-
-- Upload a photo via the web UI → it appears in OpenSearch within ~30 seconds
-- Type a natural-language query → semantically ranked thumbnails load in the gallery
-- Drop an image into the reverse-search zone → similar photos surface from the index
-- The header badge shows the live count of indexed images (`GET /stats`)
-
-<details>
-<summary>Hints</summary>
-
-- **Upload endpoint:**
-  ```python
-  import boto3, os
-  s3 = boto3.client("s3", region_name=os.environ["AWS_REGION_NAME"])
-
-  @app.post("/upload")
-  async def upload(files: list[UploadFile] = File(...)):
-      keys = []
-      for f in files:
-          content = await f.read()
-          s3.put_object(Bucket=os.environ["S3_BUCKET"], Key=f.filename, Body=content)
-          keys.append(f.filename)
-      return {"keys": keys}
-  ```
-
-- **Presigned URLs** — use virtual-hosted addressing or you'll get 403 on newer buckets:
-  ```python
-  s3_presign = boto3.client(
-      "s3",
-      region_name=os.environ["AWS_REGION_NAME"],
-      config=Config(s3={"addressing_style": "virtual"}),
-  )
-  url = s3_presign.generate_presigned_url(
-      "get_object",
-      Params={"Bucket": os.environ["S3_BUCKET"], "Key": hit["key"]},
-      ExpiresIn=3600,
-  )
-  ```
-
-- **Reverse image search:**
-  ```python
-  rek = boto3.client("rekognition", region_name=os.environ["AWS_REGION_NAME"])
-
-  @app.post("/search-by-image")
-  async def search_by_image(file: UploadFile = File(...)):
-      content = await file.read()
-      resp = rek.detect_labels(Image={"Bytes": content}, MaxLabels=10)
-      query = ", ".join(l["Name"] for l in resp["Labels"])
-      return await search(q=query)
-  ```
-
-- **`/count` branch in search Lambda:**
-  ```python
-  if event.get("rawPath", "").endswith("/count"):
-      try:
-          client = _get_opensearch_client()
-          count = client.count(index=INDEX_NAME)["count"] if client.indices.exists(index=INDEX_NAME) else 0
-          return {"statusCode": 200, "body": json.dumps({"count": count})}
-      except Exception as e:
-          print(f"Count error: {e}")
-          return {"statusCode": 200, "body": json.dumps({"count": 0})}
-  ```
-
-- **ECR push in `null_resource` — avoid macOS keychain errors** by writing credentials to a temp dir:
-  ```hcl
-  provisioner "local-exec" {
-    command = <<-EOF
-      TMPCONFIG=$(mktemp -d)
-      ECR_URL="${aws_ecr_repository.gallery.repository_url}"
-      ECR_TOKEN=$(aws ecr get-login-password --region ${var.aws_region})
-      ECR_AUTH=$(printf 'AWS:%s' "$ECR_TOKEN" | base64 | tr -d '\n')
-      printf '{"auths":{"%s":{"auth":"%s"}}}' "$ECR_URL" "$ECR_AUTH" > "$TMPCONFIG/config.json"
-      DOCKER_CONFIG="$TMPCONFIG" docker build --platform linux/amd64 \
-        -t "$ECR_URL:latest" ${path.module}/../../../app
-      DOCKER_CONFIG="$TMPCONFIG" docker push "$ECR_URL:latest"
-    EOF
-  }
-  ```
-
-- **App Runner IAM — two separate roles:**
-  - *Access role* — assumed by the App Runner **control plane** to pull the image from ECR; trust principal: `build.apprunner.amazonaws.com`; attach managed policy `AWSAppRunnerServicePolicyForECRAccess`
-  - *Instance role* — assumed by running **containers** to call AWS APIs; trust principal: `tasks.apprunner.amazonaws.com`; grant `s3:PutObject` + `s3:GetObject` on the image bucket, and `rekognition:DetectLabels` on `"*"`
-
-- **App Runner service resource:**
-  ```hcl
-  resource "aws_apprunner_service" "gallery" {
-    depends_on   = [null_resource.push_image]
-    service_name = "${var.collection_name}-gallery"
-
-    source_configuration {
-      image_repository {
-        image_configuration {
-          port = "8080"
-          runtime_environment_variables = {
-            S3_BUCKET       = var.s3_bucket_name
-            SEARCH_API_URL  = var.search_api_url
-            AWS_REGION_NAME = var.aws_region
-          }
-        }
-        image_identifier      = "${aws_ecr_repository.gallery.repository_url}:latest"
-        image_repository_type = "ECR"
-      }
-      authentication_configuration {
-        access_role_arn = aws_iam_role.apprunner_access.arn
-      }
-      auto_deployments_enabled = false
-    }
-
-    instance_configuration {
-      instance_role_arn = aws_iam_role.apprunner_instance.arn
-      cpu               = "256"
-      memory            = "512"
-    }
-  }
-  ```
-
-- **`smoke-frontend` skeleton:**
-  ```makefile
-  smoke-frontend:
-  	@. .tf_outputs.env && \
-  	for i in $$(seq 1 12); do \
-  		STATUS=$$(curl -s -o /dev/null -w "%{http_code}" "$$GALLERY_URL"); \
-  		if [ "$$STATUS" = "200" ]; then echo "smoke-frontend: PASSED"; exit 0; fi; \
-  		sleep 15; \
-  	done; exit 1
-  ```
-</details>
-
-**Key Concepts**
-> - **`null_resource` + `local-exec`**: Terraform's escape hatch for imperative steps (Docker build/push) that have no native provider resource; `triggers` on file hashes re-run the build only when app code changes
-> - **Two IAM roles for App Runner**: the *access role* is assumed by the App Runner control plane to pull from ECR; the *instance role* is assumed by running containers to call AWS APIs — both are required and have different trust principals (`build.apprunner.amazonaws.com` vs `tasks.apprunner.amazonaws.com`)
-> - **`--platform linux/amd64`**: App Runner only runs x86_64 containers — always pass this flag when building on Apple Silicon or you'll get a silent architecture mismatch
-> - **Presigned URLs** let the browser load images from a private S3 bucket without exposing credentials — sign a time-limited GET URL server-side and return it in the search response; use `addressing_style: "virtual"` to avoid 403 errors on newer buckets
-> - **Reverse image search** requires no new ML infrastructure: Rekognition labels → label string → existing text embedding search; the embedding space is shared
-> - App Runner provisions HTTPS automatically; no certificate management needed
-
----
-
 ## Solutions
 
 The complete working implementation lives on the `solution` branch:
@@ -1001,13 +813,11 @@ git checkout solution
 | File | What to Study |
 |------|--------------|
 | `lambdas/ingest/handler.py` | Full pipeline, singleton clients, structured error handling |
-| `lambdas/search/handler.py` | k-NN search, query embedding, result formatting, `/count` branch |
+| `lambdas/search/handler.py` | k-NN search, query embedding, result formatting |
 | `terraform/modules/storage/main.tf` | S3 + DynamoDB resource configuration |
 | `terraform/modules/ingestion/main.tf` | OpenSearch policies ordering, IAM least-privilege |
-| `terraform/modules/search/main.tf` | API Gateway HTTP API wiring, GET /count route |
-| `app/main.py` | FastAPI endpoints, presigned URLs, reverse image search |
-| `terraform/modules/frontend/main.tf` | ECR, `null_resource` Docker push, App Runner, two IAM roles |
-| `Makefile` | CloudWatch polling pattern, smoke test logic, App Runner polling |
+| `terraform/modules/search/main.tf` | API Gateway HTTP API wiring |
+| `Makefile` | CloudWatch polling pattern, smoke test logic |
 
 Attempt each stage independently before checking the solution branch.
 
@@ -1015,17 +825,48 @@ Attempt each stage independently before checking the solution branch.
 
 ## Stretch Goals
 
-After completing all 8 stages:
+After completing all 7 stages:
 
 1. **Image embeddings** — In Stage 4, switch from `inputText` (label string) to `inputImage` (base64-encoded image bytes). Fetch the image from S3 in Lambda, encode it, and pass it to Titan Embed Image.
 
-2. **Glue + Athena** — Configure a Glue crawler to catalog the S3 bucket. Add an Athena query endpoint that filters by exact label match — a complement to vector search for structured queries.
+2. **AppRunner frontend** — The cherry on top. Turn your invisible API into a real web gallery: upload photos from a browser, type a natural-language query, and see semantically ranked thumbnails — all backed by the pipeline you built in Stages 1–7.
 
-3. **Claude query rewriting** — Use Bedrock Claude to expand natural-language queries before embedding. For example, `"beach"` → `"sandy beach, ocean waves, coastal scenery, summer sky"`.
+   **What to build:**
+   - A Python [FastAPI](https://fastapi.tiangolo.com/) web app with five endpoints:
+     - `GET /` — serves the gallery HTML (embedded in the app, no separate static files needed)
+     - `POST /upload` — accepts **one or more** multipart images and writes each to S3 with `put_object`
+     - `GET /search?q=<query>` — proxies to your API Gateway search endpoint and enriches each result with a **presigned S3 GET URL** (1-hour TTL) so the browser can render thumbnails directly
+     - `POST /search-by-image` — accepts a query image, runs it through Rekognition to extract labels, joins them into a text string, then calls the existing search API — reverse image search with no new infrastructure
+     - `GET /stats` — proxies to a new `GET /count` route on the search Lambda (AOSS `_count` query) and returns the number of indexed images
+   - A minimal but functional gallery UI: drag-and-drop upload (multiple files at once), a combined search card with a text field and an image drop zone, a live image count badge in the header, and a responsive image grid showing thumbnail, relevance score, and Rekognition labels
+   - A **Dockerfile** (Python 3.12-slim, uvicorn on port 8080, built with `--platform linux/amd64` for App Runner compatibility)
+   - A `terraform/modules/frontend/` Terraform module containing:
+     - `aws_ecr_repository` — private container registry (`force_delete = true` for clean teardown)
+     - `null_resource` with a `local-exec` provisioner — builds and pushes the Docker image to ECR during `terraform apply`, re-triggering whenever `Dockerfile`, `main.py`, or `pyproject.toml` change
+     - Two IAM roles: an **access role** (`build.apprunner.amazonaws.com`) with the managed `AWSAppRunnerServicePolicyForECRAccess` policy for ECR pulls; an **instance role** (`tasks.apprunner.amazonaws.com`) with `s3:PutObject` + `s3:GetObject` on the image bucket
+     - `aws_apprunner_service` pointing at the ECR image (`cpu = "256"`, `memory = "512"` — the minimum tier)
 
-4. **DLQ on ingest Lambda** — Add an SQS Dead Letter Queue. Configure a redrive policy so failed ingest invocations (unhandled exceptions after Lambda retries) land in the DLQ for inspection.
+   **Key concepts:**
+   > - **Presigned URLs** let the browser load images from a private S3 bucket without exposing credentials — the backend signs a time-limited GET URL and returns it in the search response
+   > - **`null_resource` + `local-exec`**: Terraform's escape hatch for imperative steps (Docker build/push) that have no native provider resource. `triggers` on file hashes make it re-run only when app code changes
+   > - **Two IAM roles for App Runner**: the *access role* is assumed by the App Runner control plane to pull the image from ECR; the *instance role* is assumed by your running container to call AWS APIs — both are required and have different trust principals
+   > - **`--platform linux/amd64`**: App Runner only runs x86_64 containers — always pass this flag when building on Apple Silicon to avoid a silent architecture mismatch
+   > - App Runner provisions HTTPS automatically; no certificate management needed
 
-5. **moto unit tests** — Write `pytest` tests for both handlers using `moto` to mock S3, Rekognition, Bedrock, and DynamoDB. Test the happy path and key error conditions.
+   **Verification:**
+   ```bash
+   make deploy          # builds image, pushes to ECR, provisions App Runner (~2 min to become healthy)
+   make smoke-frontend  # polls until the gallery returns HTTP 200
+   make open-gallery    # opens the URL in your browser
+   ```
+
+3. **Glue + Athena** — Configure a Glue crawler to catalog the S3 bucket. Add an Athena query endpoint that filters by exact label match — a complement to vector search for structured queries.
+
+4. **Claude query rewriting** — Use Bedrock Claude to expand natural-language queries before embedding. For example, `"beach"` → `"sandy beach, ocean waves, coastal scenery, summer sky"`.
+
+5. **DLQ on ingest Lambda** — Add an SQS Dead Letter Queue. Configure a redrive policy so failed ingest invocations (unhandled exceptions after Lambda retries) land in the DLQ for inspection.
+
+6. **moto unit tests** — Write `pytest` tests for both handlers using `moto` to mock S3, Rekognition, Bedrock, and DynamoDB. Test the happy path and key error conditions.
 
 ---
 
@@ -1045,9 +886,7 @@ make wait-opensearch   # poll until OpenSearch collection is ACTIVE
 make search QUERY=dog  # call the search API
 make smoke-ingest      # poll CloudWatch for "OpenSearch: indexed"
 make smoke-search      # assert search returns results
-make smoke-frontend    # poll App Runner URL until HTTP 200 (Stage 8)
-make open-gallery      # open gallery URL in browser (Stage 8)
-make e2e               # full: deploy → upload → smoke-ingest → search → smoke-search → smoke-frontend → destroy
+make e2e               # full: deploy → upload → smoke-ingest → search → smoke-search → destroy
 make destroy           # terraform destroy + remove .tf_outputs.env
 make clean             # remove zips, caches, .tf_outputs.env
 ```
@@ -1114,6 +953,3 @@ embedding = json.loads(response["body"].read())["embedding"]
 | 5 | OpenSearch Serverless | `aoss:APIAccessAll` | Collection ARN |
 | 6 | Bedrock | `bedrock:InvokeModel` | Titan model ARN (search role) |
 | 6 | OpenSearch Serverless | `aoss:APIAccessAll` | Collection ARN (search role) |
-| 8 | S3 | `s3:PutObject`, `s3:GetObject` | `${bucket_arn}/*` (App Runner instance role) |
-| 8 | Rekognition | `rekognition:DetectLabels` | `*` (App Runner instance role) |
-| 8 | ECR | `AWSAppRunnerServicePolicyForECRAccess` (managed) | — (App Runner access role) |

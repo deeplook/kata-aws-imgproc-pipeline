@@ -1,27 +1,106 @@
 import json
+import os
+
+import boto3
+from botocore.exceptions import ClientError, EndpointConnectionError
+from opensearchpy import OpenSearch, RequestsHttpConnection
+from requests_aws4auth import AWS4Auth
 
 
-# TODO Stage 6: move Bedrock client to module scope (singleton pattern)
-# TODO Stage 6: move OpenSearch client to module scope (singleton pattern)
+_BEDROCK_CLIENT = None
+_OS_CLIENT = None
+INDEX_NAME = "photos"
+
+
+def _get_bedrock_client():
+    global _BEDROCK_CLIENT
+    if _BEDROCK_CLIENT is None:
+        _BEDROCK_CLIENT = boto3.client("bedrock-runtime")
+    return _BEDROCK_CLIENT
+
+
+def _get_opensearch_client():
+    global _OS_CLIENT
+    if _OS_CLIENT is None:
+        region = os.environ["AWS_REGION_NAME"]
+        credentials = boto3.Session().get_credentials()
+        awsauth = AWS4Auth(
+            credentials.access_key,
+            credentials.secret_key,
+            region,
+            "aoss",
+            session_token=credentials.token,
+        )
+        endpoint = os.environ["OPENSEARCH_ENDPOINT"].removeprefix("https://")
+        _OS_CLIENT = OpenSearch(
+            hosts=[{"host": endpoint, "port": 443}],
+            http_auth=awsauth,
+            use_ssl=True,
+            verify_certs=True,
+            connection_class=RequestsHttpConnection,
+        )
+    return _OS_CLIENT
 
 
 def lambda_handler(event, context):
-    # TODO Stage 8: add /count branch before the search logic
-    # if event.get("rawPath", "").endswith("/count"):
-    #     try:
-    #         client = _get_opensearch_client()
-    #         count = client.count(index=INDEX_NAME)["count"] if client.indices.exists(index=INDEX_NAME) else 0
-    #         return {"statusCode": 200, "body": json.dumps({"count": count})}
-    #     except Exception as e:
-    #         print(f"Count error: {e}")
-    #         return {"statusCode": 200, "body": json.dumps({"count": 0})}
+    if event.get("rawPath", "").endswith("/count"):
+        try:
+            client = _get_opensearch_client()
+            count = client.count(index=INDEX_NAME)["count"] if client.indices.exists(index=INDEX_NAME) else 0
+            return {"statusCode": 200, "body": json.dumps({"count": count})}
+        except Exception as e:
+            print(f"Count error: {e}")
+            return {"statusCode": 200, "body": json.dumps({"count": 0})}
 
-    # TODO Stage 6: extract query string from event["queryStringParameters"]["q"]
-    # TODO Stage 6: return 400 if query is missing or empty
+    params = event.get("queryStringParameters") or {}
+    query = params.get("q", "").strip()
+    if not query:
+        return {"statusCode": 400, "body": json.dumps({"message": "missing query parameter 'q'"})}
 
-    # TODO Stage 6: embed the query text using Bedrock titan-embed-image-v1
-    # TODO Stage 6: run k-NN search against OpenSearch (k=5)
-    # TODO Stage 6: format hits as [{"key": ..., "score": ..., "labels": ...}]
-    # TODO Stage 6: return {"statusCode": 200, "body": json.dumps(results)}
+    print(f"Search query: {query!r}")
 
-    pass
+    try:
+        bedrock = _get_bedrock_client()
+        response = bedrock.invoke_model(
+            modelId="amazon.titan-embed-image-v1",
+            body=json.dumps({"inputText": query}),
+            contentType="application/json",
+            accept="application/json",
+        )
+        query_embedding = json.loads(response["body"].read())["embedding"]
+        print(f"query embedding: {len(query_embedding)} dimensions")
+
+        client = _get_opensearch_client()
+        search_response = client.search(index=INDEX_NAME, body={
+            "size": 5,
+            "query": {
+                "knn": {
+                    "embedding": {
+                        "vector": query_embedding,
+                        "k": 5,
+                    }
+                }
+            },
+        })
+
+        results = [
+            {
+                "key":    hit["_source"]["image_key"],
+                "score":  hit["_score"],
+                "labels": hit["_source"].get("labels", []),
+            }
+            for hit in search_response["hits"]["hits"]
+        ]
+        print(json.dumps({"query": query, "results": len(results)}))
+        return {"statusCode": 200, "body": json.dumps({"results": results})}
+
+    except EndpointConnectionError as e:
+        print(f"Connection error: {e}")
+        return {"statusCode": 503, "body": json.dumps({"message": "Service unavailable"})}
+    except ClientError as e:
+        code = e.response["Error"]["Code"]
+        print(f"AWS error [{code}]: {e}")
+        return {"statusCode": 500, "body": json.dumps({"message": f"AWS error: {code}"})}
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return {"statusCode": 500, "body": json.dumps({"message": "Internal error"})}

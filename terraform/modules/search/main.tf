@@ -141,12 +141,11 @@ resource "aws_apigatewayv2_route" "search_route" {
   target    = "integrations/${aws_apigatewayv2_integration.search_integration.id}"
 }
 
-# TODO Stage 8: add GET /count route (reuses the same Lambda integration as GET /search)
-# resource "aws_apigatewayv2_route" "count_route" {
-#   api_id    = aws_apigatewayv2_api.search_api.id
-#   route_key = "GET /count"
-#   target    = "integrations/${aws_apigatewayv2_integration.search_integration.id}"
-# }
+resource "aws_apigatewayv2_route" "count_route" {
+  api_id    = aws_apigatewayv2_api.search_api.id
+  route_key = "GET /count"
+  target    = "integrations/${aws_apigatewayv2_integration.search_integration.id}"
+}
 
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.search_api.id

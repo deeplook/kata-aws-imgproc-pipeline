@@ -16,25 +16,14 @@ terraform {
 # ECR — container registry for the gallery web app image
 # ---------------------------------------------------------------------------
 
-# TODO Stage 8: ECR repository for the gallery Docker image
-# Hints:
-#   - resource type: aws_ecr_repository
-#   - name: "${var.collection_name}-gallery"
-#   - image_tag_mutability = "MUTABLE"
-#   - force_delete = true (allows destroy even when images are present)
 resource "aws_ecr_repository" "gallery" {
   name                 = "${var.collection_name}-gallery"
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 }
 
-# TODO Stage 8: build and push the Docker image to ECR on every apply
-# This null_resource runs a local-exec shell script to:
-#   1. Get an ECR login token with `aws ecr get-login-password`
-#   2. Write credentials to a temp DOCKER_CONFIG dir (avoids macOS keychain errors)
-#   3. Build the image with --platform linux/amd64 (App Runner requires x86_64)
-#   4. Push to ECR
-# The triggers block re-runs the build when Dockerfile, main.py, or pyproject.toml change.
+# Build the Docker image and push to ECR.
+# Triggers a rebuild whenever Dockerfile, main.py, or pyproject.toml change.
 resource "null_resource" "push_image" {
   depends_on = [aws_ecr_repository.gallery]
 
@@ -45,6 +34,13 @@ resource "null_resource" "push_image" {
   }
 
   provisioner "local-exec" {
+    # --platform linux/amd64 is required for App Runner and ensures the image
+    # runs correctly even when built on Apple Silicon.
+    #
+    # DOCKER_CONFIG is set to a temporary directory with an empty config so
+    # Docker does not attempt to use the macOS keychain (which is inaccessible
+    # in non-interactive sessions). ECR login writes credentials as base64 into
+    # that temp config; docker build/push pick them up from there.
     command = <<-EOF
       TMPCONFIG=$(mktemp -d)
       ECR_URL="${aws_ecr_repository.gallery.repository_url}"
@@ -63,10 +59,6 @@ resource "null_resource" "push_image" {
 # IAM — App Runner access role (ECR image pull)
 # ---------------------------------------------------------------------------
 
-# TODO Stage 8: IAM role assumed by the App Runner control plane to pull ECR images
-# Hints:
-#   - trust principal: "build.apprunner.amazonaws.com"
-#   - attach managed policy: arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
 resource "aws_iam_role" "apprunner_access" {
   name = "apprunner-ecr-access-role"
 
@@ -86,14 +78,9 @@ resource "aws_iam_role_policy_attachment" "apprunner_ecr" {
 }
 
 # ---------------------------------------------------------------------------
-# IAM — App Runner instance role (runtime AWS API access)
+# IAM — App Runner instance role (runtime S3 access)
 # ---------------------------------------------------------------------------
 
-# TODO Stage 8: IAM role assumed by running containers to call AWS APIs
-# Hints:
-#   - trust principal: "tasks.apprunner.amazonaws.com"  (different from the access role!)
-#   - grant s3:PutObject + s3:GetObject on "${var.s3_bucket_arn}/*"
-#   - grant rekognition:DetectLabels on "*"
 resource "aws_iam_role" "apprunner_instance" {
   name = "apprunner-instance-role"
 
@@ -139,17 +126,6 @@ resource "aws_iam_role_policy" "apprunner_rekognition" {
 # App Runner — gallery service
 # ---------------------------------------------------------------------------
 
-# TODO Stage 8: App Runner service
-# Hints:
-#   - depends_on = [null_resource.push_image] so the image is pushed before the service is created
-#   - image_identifier: "${aws_ecr_repository.gallery.repository_url}:latest"
-#   - image_repository_type: "ECR"
-#   - port: "8080"
-#   - runtime_environment_variables: S3_BUCKET, SEARCH_API_URL, AWS_REGION_NAME
-#   - access_role_arn: aws_iam_role.apprunner_access.arn  (ECR pull)
-#   - instance_role_arn: aws_iam_role.apprunner_instance.arn  (runtime AWS calls)
-#   - cpu = "256", memory = "512"  (minimum tier — sufficient for the kata)
-#   - auto_deployments_enabled = false
 resource "aws_apprunner_service" "gallery" {
   depends_on   = [null_resource.push_image]
   service_name = "${var.collection_name}-gallery"

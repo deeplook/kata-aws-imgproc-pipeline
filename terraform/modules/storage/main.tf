@@ -14,7 +14,7 @@ terraform {
 #   - set bucket = var.bucket_name
 #   - set force_destroy = true so `terraform destroy` works even with objects inside
 resource "aws_s3_bucket" "images" {
-  bucket        = "???" # TODO Stage 1: var.bucket_name
+  bucket        = var.bucket_name
   force_destroy = true  # allows destroy even when the bucket contains objects
 }
 

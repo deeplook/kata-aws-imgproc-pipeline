@@ -1,31 +1,148 @@
 import json
+import os
 import urllib.parse
+from datetime import datetime, timezone
+from decimal import Decimal
+
+import boto3
+from botocore.exceptions import ClientError
+from opensearchpy import OpenSearch, RequestsHttpConnection
+from requests_aws4auth import AWS4Auth
 
 
-# TODO Stage 4: move Bedrock client to module scope (singleton pattern)
-# TODO Stage 5: move OpenSearch client to module scope (singleton pattern)
+_OS_CLIENT = None
+INDEX_NAME = "photos"
+
+
+def _get_opensearch_client():
+    global _OS_CLIENT
+    if _OS_CLIENT is None:
+        region = os.environ["AWS_REGION_NAME"]
+        credentials = boto3.Session().get_credentials()
+        awsauth = AWS4Auth(
+            credentials.access_key,
+            credentials.secret_key,
+            region,
+            "aoss",
+            session_token=credentials.token,
+        )
+        endpoint = os.environ["OPENSEARCH_ENDPOINT"].removeprefix("https://")
+        _OS_CLIENT = OpenSearch(
+            hosts=[{"host": endpoint, "port": 443}],
+            http_auth=awsauth,
+            use_ssl=True,
+            verify_certs=True,
+            connection_class=RequestsHttpConnection,
+        )
+    return _OS_CLIENT
+
+
+def _ensure_index(client):
+    if client.indices.exists(index=INDEX_NAME):
+        return
+    try:
+        client.indices.create(index=INDEX_NAME, body={
+            "settings": {"index": {"knn": True}},
+            "mappings": {
+                "properties": {
+                    "image_key": {"type": "keyword"},
+                    "labels":    {"type": "keyword"},
+                    "embedding": {
+                        "type": "knn_vector",
+                        "dimension": 1024,
+                        "method": {
+                            "name":       "hnsw",
+                            "space_type": "cosinesimil",
+                            "engine":     "nmslib",
+                        },
+                    },
+                }
+            },
+        })
+        print(f"OpenSearch: index '{INDEX_NAME}' created")
+    except Exception as e:
+        # Concurrent Lambda invocations may both attempt index creation;
+        # swallow resource_already_exists_exception so both can proceed to index.
+        if "resource_already_exists_exception" not in str(e).lower():
+            raise
 
 
 def lambda_handler(event, context):
-    # TODO Stage 1: print a startup message
-    # TODO Stage 1: print the full event as JSON
-    # TODO Stage 1: parse bucket_name and object_key from event["Records"][0]["s3"]
-    # TODO Stage 1: URL-decode the object key (urllib.parse.unquote_plus)
-    # TODO Stage 1: return {"statusCode": 200, "body": json.dumps({"key": object_key})}
+    print("Ingest Lambda invoked")
 
-    # TODO Stage 2: create a Rekognition client
-    # TODO Stage 2: call detect_labels (MaxLabels=10, MinConfidence=75)
-    # TODO Stage 2: log each label as "  - <Name>: <Confidence:.2f>%"
+    if not event.get("Records"):
+        return {"statusCode": 400, "body": json.dumps({"message": "Invalid event: no Records"})}
 
-    # TODO Stage 3: create a DynamoDB resource
-    # TODO Stage 3: call put_item with image_key, labels, upload_timestamp
+    try:
+        bucket_name = event["Records"][0]["s3"]["bucket"]["name"]
+        raw_key = event["Records"][0]["s3"]["object"]["key"]
+        object_key = urllib.parse.unquote_plus(raw_key, encoding="utf-8")
+        print(f"Processing: s3://{bucket_name}/{object_key}")
 
-    # TODO Stage 4: call Bedrock invoke_model with amazon.titan-embed-image-v1
-    # TODO Stage 4: extract embedding from response, log "embedding: N dimensions"
-    # TODO Stage 4: update DynamoDB item with the embedding attribute
+        # Stage 2: Rekognition
+        rekognition = boto3.client("rekognition")
+        response = rekognition.detect_labels(
+            Image={"S3Object": {"Bucket": bucket_name, "Name": object_key}},
+            MaxLabels=10,
+            MinConfidence=75,
+        )
+        labels = response["Labels"]
+        print(f"Rekognition: {len(labels)} labels detected")
+        for label in labels:
+            print(f"  - {label['Name']}: {label['Confidence']:.2f}%")
+        label_names = [label["Name"] for label in labels]
 
-    # TODO Stage 5: create an OpenSearch client (opensearch-py + requests-aws4auth)
-    # TODO Stage 5: create index if not exists (1024 dims, cosine, hnsw)
-    # TODO Stage 5: index the document (image_key, labels, embedding)
+        # Stage 3: DynamoDB
+        dynamodb = boto3.resource("dynamodb")
+        table = dynamodb.Table(os.environ["TABLE_NAME"])
+        table.put_item(Item={
+            "image_key": object_key,
+            "labels": label_names,
+            "upload_timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        print("DynamoDB: record written")
 
-    pass
+        # Stage 4: Bedrock embeddings
+        bedrock = boto3.client("bedrock-runtime")
+        label_string = ", ".join(label_names)
+        response = bedrock.invoke_model(
+            modelId="amazon.titan-embed-image-v1",
+            body=json.dumps({"inputText": label_string}),
+            contentType="application/json",
+            accept="application/json",
+        )
+        embedding = json.loads(response["body"].read())["embedding"]
+        print(f"embedding: {len(embedding)} dimensions")
+
+        embedding_decimal = [Decimal(str(v)) for v in embedding]
+        table.update_item(
+            Key={"image_key": object_key},
+            UpdateExpression="SET embedding = :e",
+            ExpressionAttributeValues={":e": embedding_decimal},
+        )
+
+        # Stage 5: OpenSearch indexing
+        os_client = _get_opensearch_client()
+        _ensure_index(os_client)
+        os_client.index(index=INDEX_NAME, body={
+            "image_key": object_key,
+            "labels":    label_names,
+            "embedding": embedding,
+        })
+        print("OpenSearch: indexed")
+
+        print(json.dumps({
+            "key": object_key,
+            "labels": label_names,
+            "dimensions": len(embedding),
+            "indexed": True,
+        }))
+        return {"statusCode": 200, "body": json.dumps({"key": object_key, "labels": label_names})}
+
+    except ClientError as e:
+        code = e.response["Error"]["Code"]
+        print(f"AWS error [{code}]: {e}")
+        return {"statusCode": 500, "body": json.dumps({"message": f"AWS error: {code}"})}
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return {"statusCode": 500, "body": json.dumps({"message": "Internal error"})}
