@@ -89,6 +89,8 @@ The `solution` branch additionally includes a frontend stage built on App Runner
 
 - `KATA.md`: full stage-by-stage exercise
 - `COSTS.md`: cost analysis and cheaper alternatives
+- `docs/architecture.md`: visual overview of the completed solution branch
+- `docs/terraform-modules.md`: generated module graph from `terraform/main.tf`
 - `terraform/`: infrastructure modules
 - `lambdas/`: ingest and search handlers
 - `app/`: gallery frontend used by the `solution` branch
