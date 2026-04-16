@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import urllib.parse
@@ -103,11 +104,14 @@ def lambda_handler(event, context):
         print("DynamoDB: record written")
 
         # Stage 4: Bedrock embeddings
+        s3_client = boto3.client("s3")
+        img_bytes = s3_client.get_object(Bucket=bucket_name, Key=object_key)["Body"].read()
+        img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+
         bedrock = boto3.client("bedrock-runtime")
-        label_string = ", ".join(label_names)
         response = bedrock.invoke_model(
             modelId="amazon.titan-embed-image-v1",
-            body=json.dumps({"inputText": label_string}),
+            body=json.dumps({"inputImage": img_b64}),
             contentType="application/json",
             accept="application/json",
         )
