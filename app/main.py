@@ -49,7 +49,7 @@ GALLERY_HTML = """<!DOCTYPE html>
     .header { background: #1a1a2e; color: #fff; padding: 1.25rem 2rem; display: flex; align-items: center; gap: .75rem; }
     .header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: -.01em; }
     .header .badge { font-size: .7rem; background: #4a90e2; padding: .2rem .5rem; border-radius: 99px; font-weight: 500; }
-    .container { max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; display: grid; gap: 1.5rem; }
+    .container { width: min(1600px, calc(100vw - 1rem)); margin: 2rem auto; padding: 0 .5rem; display: grid; gap: 1.5rem; }
     .card { background: #fff; border-radius: 10px; padding: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
     .card h2 { font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; margin-bottom: 1rem; }
     .drop-zone { border: 2px dashed #d1d5db; border-radius: 8px; padding: 2rem 1rem; text-align: center; cursor: pointer; transition: all .2s; }
@@ -88,6 +88,13 @@ GALLERY_HTML = """<!DOCTYPE html>
     .divider { text-align: center; color: #bbb; font-size: .75rem; margin: 1rem 0; position: relative; }
     .divider::before, .divider::after { content: ''; position: absolute; top: 50%; height: 1px; background: #e5e7eb; width: calc(50% - 5rem); }
     .divider::before { left: 0; } .divider::after { right: 0; }
+    @media (max-width: 640px) {
+      .header { padding: 1rem; }
+      .container { width: calc(100vw - .5rem); margin: 1rem auto; padding: 0 .25rem; }
+      .card { padding: 1rem; }
+      .search-row { flex-direction: column; }
+      .search-row .btn { justify-content: center; }
+    }
   </style>
 </head>
 <body>
