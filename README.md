@@ -10,9 +10,9 @@ A progressive AWS kata for building a serverless semantic photo pipeline, from a
 If you want to do the exercise, stay on `main`.
 If you want the finished reference, inspect `solution`.
 
-![Temporary placeholder preview of the completed solution frontend](docs/solution-preview-placeholder.svg)
+![Preview of the completed solution frontend](docs/solution-preview.png)
 
-Temporary placeholder preview of the completed `solution` branch frontend. Replace this image with a real screenshot when available.
+Completed `solution` branch frontend preview.
 
 ## What You Are Building
 
