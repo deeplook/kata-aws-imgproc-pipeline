@@ -174,8 +174,7 @@ resource "aws_opensearchserverless_access_policy" "data_access" {
     ]
     Principal = [
       aws_iam_role.ingest_exec.arn,
-      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root",
-      # TODO Stage 6: add search Lambda role ARN here
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/search-lambda-exec-role",
     ]
   }])
 
