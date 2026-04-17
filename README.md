@@ -1,5 +1,6 @@
 # kata-aws-imgproc-pipeline
 
+[![Build](https://github.com/deeplook/kata-aws-imgproc-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/deeplook/kata-aws-imgproc-pipeline/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/deeplook/kata-aws-imgproc-pipeline?label=Release&style=flat)](https://github.com/deeplook/kata-aws-imgproc-pipeline/releases)
 [![License](https://img.shields.io/github/license/deeplook/kata-aws-imgproc-pipeline?label=License&style=flat)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white&style=flat)](https://www.python.org)
