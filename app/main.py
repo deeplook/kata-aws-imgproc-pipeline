@@ -1,10 +1,8 @@
 import os
 
 import boto3
-import httpx
-from botocore.config import Config
 from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 
 app = FastAPI(title="Semantic Photo Gallery")
 

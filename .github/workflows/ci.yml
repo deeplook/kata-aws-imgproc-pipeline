@@ -9,6 +9,8 @@ on:
 jobs:
   lint:
     name: Lint
+    # Stubs on main have intentionally unused imports; lint the reference only
+    if: github.ref == 'refs/heads/solution' || (github.event_name == 'pull_request' && github.base_ref == 'solution')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +23,8 @@ jobs:
 
   test:
     name: Test
+    # Handlers are stubs on main; tests target the completed reference only
+    if: github.ref == 'refs/heads/solution' || (github.event_name == 'pull_request' && github.base_ref == 'solution')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
