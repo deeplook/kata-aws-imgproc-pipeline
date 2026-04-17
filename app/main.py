@@ -396,7 +396,7 @@ async def search_by_image(file: UploadFile = File(...)):
         MaxLabels=10,
         MinConfidence=75,
     )
-    labels = [l["Name"] for l in rek_resp["Labels"]]
+    labels = [lbl["Name"] for lbl in rek_resp["Labels"]]
     if not labels:
         return JSONResponse({"labels": [], "results": []})
 
