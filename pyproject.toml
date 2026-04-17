@@ -1,16 +1,10 @@
-[project]
-name = "kata-aws-imgproc-pipeline"
-requires-python = ">=3.12"
-dependencies = [
+[tool.uv]
+dev-dependencies = [
     "boto3>=1.39.0",
     "opensearch-py>=2.4.0",
     "requests-aws4auth>=1.3.0",
-]
-
-[tool.uv]
-dev-dependencies = [
     "pytest>=8.0.0",
-    "moto[s3,rekognition,dynamodb,bedrock]>=5.0.0",
+    "moto[s3,rekognition,dynamodb]>=5.0.0",
     "ruff>=0.4.0",
 ]
 
