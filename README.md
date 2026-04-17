@@ -1,5 +1,12 @@
 # kata-aws-imgproc-pipeline
 
+[![Release](https://img.shields.io/github/v/release/deeplook/kata-aws-imgproc-pipeline?label=Release&style=flat)](https://github.com/deeplook/kata-aws-imgproc-pipeline/releases)
+[![License](https://img.shields.io/github/license/deeplook/kata-aws-imgproc-pipeline?label=License&style=flat)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white&style=flat)](https://www.python.org)
+[![Terraform](https://img.shields.io/badge/Terraform-%E2%89%A51.3-623CE4?logo=terraform&logoColor=white&style=flat)](https://www.terraform.io)
+[![AWS](https://img.shields.io/badge/AWS-Serverless-FF9900?logo=amazonaws&logoColor=white&style=flat)](https://aws.amazon.com)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/deeplook)
+
 A progressive AWS kata for building a serverless semantic photo pipeline, from a stubbed S3-triggered Lambda to a searchable image gallery.
 
 ## Branches
