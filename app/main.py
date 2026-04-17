@@ -1,8 +1,10 @@
 import os
 
 import boto3
+import httpx
+from botocore.config import Config
 from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 app = FastAPI(title="Semantic Photo Gallery")
 
@@ -24,10 +26,14 @@ def _get_rekognition():
 def _get_s3():
     global _s3
     if _s3 is None:
-        # TODO Stage 8: add Config(s3={"addressing_style": "virtual"}) here.
-        # Without it, boto3 generates path-style presigned URLs which return 403
-        # for S3 buckets created after 2019.
-        _s3 = boto3.client("s3", region_name=AWS_REGION)
+        # Use the regional endpoint so presigned URLs don't hit the global
+        # s3.amazonaws.com endpoint, which returns a 307 redirect. Following
+        # that redirect breaks the signature because the Host header changes.
+        _s3 = boto3.client(
+            "s3",
+            region_name=AWS_REGION,
+            config=Config(s3={"addressing_style": "virtual"}),
+        )
     return _s3
 
 
@@ -43,7 +49,7 @@ GALLERY_HTML = """<!DOCTYPE html>
     .header { background: #1a1a2e; color: #fff; padding: 1.25rem 2rem; display: flex; align-items: center; gap: .75rem; }
     .header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: -.01em; }
     .header .badge { font-size: .7rem; background: #4a90e2; padding: .2rem .5rem; border-radius: 99px; font-weight: 500; }
-    .container { max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; display: grid; gap: 1.5rem; }
+    .container { width: min(1600px, calc(100vw - 1rem)); margin: 2rem auto; padding: 0 .5rem; display: grid; gap: 1.5rem; }
     .card { background: #fff; border-radius: 10px; padding: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
     .card h2 { font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #888; margin-bottom: 1rem; }
     .drop-zone { border: 2px dashed #d1d5db; border-radius: 8px; padding: 2rem 1rem; text-align: center; cursor: pointer; transition: all .2s; }
@@ -82,6 +88,13 @@ GALLERY_HTML = """<!DOCTYPE html>
     .divider { text-align: center; color: #bbb; font-size: .75rem; margin: 1rem 0; position: relative; }
     .divider::before, .divider::after { content: ''; position: absolute; top: 50%; height: 1px; background: #e5e7eb; width: calc(50% - 5rem); }
     .divider::before { left: 0; } .divider::after { right: 0; }
+    @media (max-width: 640px) {
+      .header { padding: 1rem; }
+      .container { width: calc(100vw - .5rem); margin: 1rem auto; padding: 0 .25rem; }
+      .card { padding: 1rem; }
+      .search-row { flex-direction: column; }
+      .search-row .btn { justify-content: center; }
+    }
   </style>
 </head>
 <body>
@@ -132,6 +145,7 @@ GALLERY_HTML = """<!DOCTYPE html>
   </div>
 
   <script>
+    // Lightbox
     const lightbox = document.getElementById('lightbox');
     const lbImg    = document.getElementById('lbImg');
     document.getElementById('lbClose').addEventListener('click', closeLb);
@@ -140,14 +154,14 @@ GALLERY_HTML = """<!DOCTYPE html>
     function openLb(url, alt) { lbImg.src = url; lbImg.alt = alt; lightbox.classList.add('open'); }
     function closeLb() { lightbox.classList.remove('open'); lbImg.src = ''; }
 
-    const fileInput        = document.getElementById('fileInput');
-    const dropZone         = document.getElementById('dropZone');
-    const fileName         = document.getElementById('fileName');
-    const uploadBtn        = document.getElementById('uploadBtn');
-    const uploadStatus     = document.getElementById('uploadStatus');
-    const searchInput      = document.getElementById('searchInput');
-    const searchBtn        = document.getElementById('searchBtn');
-    const searchStatus     = document.getElementById('searchStatus');
+    const fileInput       = document.getElementById('fileInput');
+    const dropZone        = document.getElementById('dropZone');
+    const fileName        = document.getElementById('fileName');
+    const uploadBtn       = document.getElementById('uploadBtn');
+    const uploadStatus    = document.getElementById('uploadStatus');
+    const searchInput     = document.getElementById('searchInput');
+    const searchBtn       = document.getElementById('searchBtn');
+    const searchStatus    = document.getElementById('searchStatus');
     const imgSearchInput   = document.getElementById('imgSearchInput');
     const imgSearchZone    = document.getElementById('imgSearchZone');
     const imgSearchName    = document.getElementById('imgSearchName');
@@ -176,7 +190,11 @@ GALLERY_HTML = """<!DOCTYPE html>
     fileInput.addEventListener('change', () => pickFiles(fileInput.files));
     dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('over'); });
     dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('over'));
-    dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('over'); pickFiles(e.dataTransfer.files); });
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('over');
+      pickFiles(e.dataTransfer.files);
+    });
 
     uploadBtn.addEventListener('click', async () => {
       if (!selectedFiles.length) return;
@@ -184,6 +202,7 @@ GALLERY_HTML = """<!DOCTYPE html>
       uploadBtn.innerHTML = '<span class="spinner"></span> Uploading…';
       uploadStatus.className = 'status';
       uploadStatus.textContent = '';
+
       const form = new FormData();
       for (const f of selectedFiles) form.append('files', f);
       try {
@@ -193,12 +212,18 @@ GALLERY_HTML = """<!DOCTYPE html>
           const n = data.keys.length;
           uploadStatus.className = 'status ok';
           uploadStatus.textContent = '✓ Uploaded ' + n + ' file' + (n !== 1 ? 's' : '') + ' — pipeline is running (search in ~30s)';
-          selectedFiles = []; fileInput.value = ''; fileName.textContent = ''; uploadBtn.disabled = true;
+          selectedFiles = [];
+          fileInput.value = '';
+          fileName.textContent = '';
+          uploadBtn.disabled = true;
         } else {
           uploadStatus.className = 'status err';
           uploadStatus.textContent = '✗ ' + (data.message || 'Upload failed');
         }
-      } catch { uploadStatus.className = 'status err'; uploadStatus.textContent = '✗ Network error'; }
+      } catch {
+        uploadStatus.className = 'status err';
+        uploadStatus.textContent = '✗ Network error';
+      }
       uploadBtn.innerHTML = 'Upload';
     });
 
@@ -229,39 +254,69 @@ GALLERY_HTML = """<!DOCTYPE html>
       if (!q) return;
       searchBtn.disabled = true;
       searchBtn.innerHTML = '<span class="spinner"></span> Searching…';
-      searchStatus.className = 'status'; searchStatus.textContent = '';
-      imgSearchPreview.style.display = 'none'; imgSearchName.textContent = ''; resultsEl.innerHTML = '';
+      searchStatus.className = 'status';
+      searchStatus.textContent = '';
+      imgSearchPreview.style.display = 'none';
+      imgSearchName.textContent = '';
+      resultsEl.innerHTML = '';
+
       try {
         const res = await fetch('/search?q=' + encodeURIComponent(q));
         const data = await res.json();
-        if (!res.ok) { searchStatus.className = 'status err'; searchStatus.textContent = '✗ ' + (data.message || 'Search failed'); return; }
+        if (!res.ok) {
+          searchStatus.className = 'status err';
+          searchStatus.textContent = '✗ ' + (data.message || 'Search failed');
+          return;
+        }
         searchStatus.className = 'status ok';
         searchStatus.textContent = data.length + ' result' + (data.length !== 1 ? 's' : '') + ' for "' + q + '"';
         renderResults(data);
-      } catch { searchStatus.className = 'status err'; searchStatus.textContent = '✗ Network error'; }
-      searchBtn.disabled = false; searchBtn.textContent = 'Search';
+      } catch {
+        searchStatus.className = 'status err';
+        searchStatus.textContent = '✗ Network error';
+      }
+      searchBtn.disabled = false;
+      searchBtn.textContent = 'Search';
     }
 
     imgSearchZone.addEventListener('dragover',  e => { e.preventDefault(); imgSearchZone.classList.add('over'); });
     imgSearchZone.addEventListener('dragleave', ()  => imgSearchZone.classList.remove('over'));
-    imgSearchZone.addEventListener('drop', e => { e.preventDefault(); imgSearchZone.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f && f.type.startsWith('image/')) doImageSearch(f); });
-    imgSearchInput.addEventListener('change', () => { if (imgSearchInput.files[0]) doImageSearch(imgSearchInput.files[0]); });
+    imgSearchZone.addEventListener('drop', e => {
+      e.preventDefault();
+      imgSearchZone.classList.remove('over');
+      const f = e.dataTransfer.files[0];
+      if (f && f.type.startsWith('image/')) doImageSearch(f);
+    });
+    imgSearchInput.addEventListener('change', () => {
+      if (imgSearchInput.files[0]) doImageSearch(imgSearchInput.files[0]);
+    });
 
     async function doImageSearch(file) {
       imgSearchName.textContent = file.name;
       imgSearchPreview.src = URL.createObjectURL(file);
       imgSearchPreview.style.display = 'block';
-      searchStatus.className = 'status'; searchStatus.innerHTML = '<span class="spinner"></span> Analyzing…'; resultsEl.innerHTML = '';
-      const form = new FormData(); form.append('file', file);
+      searchStatus.className = 'status';
+      searchStatus.innerHTML = '<span class="spinner"></span> Analyzing…';
+      resultsEl.innerHTML = '';
+
+      const form = new FormData();
+      form.append('file', file);
       try {
         const res = await fetch('/search-by-image', { method: 'POST', body: form });
         const data = await res.json();
-        if (!res.ok) { searchStatus.className = 'status err'; searchStatus.textContent = '✗ ' + (data.message || 'Analysis failed'); return; }
+        if (!res.ok) {
+          searchStatus.className = 'status err';
+          searchStatus.textContent = '✗ ' + (data.message || 'Analysis failed');
+          return;
+        }
         const n = data.results.length;
         searchStatus.className = 'status ok';
         searchStatus.textContent = 'Detected: ' + data.labels.join(', ') + ' — ' + n + ' result' + (n !== 1 ? 's' : '');
         renderResults(data.results);
-      } catch { searchStatus.className = 'status err'; searchStatus.textContent = '✗ Network error'; }
+      } catch {
+        searchStatus.className = 'status err';
+        searchStatus.textContent = '✗ Network error';
+      }
     }
   </script>
 </body>
@@ -276,36 +331,94 @@ def index():
 
 @app.post("/upload")
 async def upload(files: list[UploadFile] = File(...)):
-    # TODO Stage 8: upload each file to S3_BUCKET using s3.put_object
-    #   - call _get_s3().put_object(Bucket=S3_BUCKET, Key=file.filename, Body=content, ContentType=...)
-    #   - collect the filenames in a list
-    # TODO Stage 8: return {"keys": [list of uploaded filenames]}
-    pass
-
-
-@app.get("/search")
-async def search(q: str = ""):
-    # TODO Stage 8: return 400 if q is empty
-    # TODO Stage 8: proxy GET to SEARCH_API_URL/search?q=q using httpx
-    # TODO Stage 8: deduplicate results by "key" (keep highest score per key)
-    # TODO Stage 8: enrich each result with a presigned S3 GET URL (ExpiresIn=3600)
-    # TODO Stage 8: return JSONResponse(results)
-    pass
-
-
-@app.post("/search-by-image")
-async def search_by_image(file: UploadFile = File(...)):
-    # TODO Stage 8: read file bytes
-    # TODO Stage 8: call rekognition detect_labels with Image={"Bytes": content}
-    #               (inline bytes — query image is never stored in S3)
-    # TODO Stage 8: join label names, call SEARCH_API_URL/search
-    # TODO Stage 8: deduplicate + add presigned URLs (same as /search)
-    # TODO Stage 8: return JSONResponse({"labels": labels, "results": results})
-    pass
+    s3 = _get_s3()
+    keys = []
+    for file in files:
+        content = await file.read()
+        s3.put_object(
+            Bucket=S3_BUCKET,
+            Key=file.filename,
+            Body=content,
+            ContentType=file.content_type or "image/jpeg",
+        )
+        keys.append(file.filename)
+    return {"keys": keys}
 
 
 @app.get("/stats")
 async def stats():
-    # TODO Stage 8: proxy GET to SEARCH_API_URL/count using httpx
-    # TODO Stage 8: return JSONResponse(resp.json()) on success, {"count": 0} on failure
-    pass
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(f"{SEARCH_API_URL}/count")
+    if not resp.is_success:
+        return JSONResponse({"count": 0})
+    return JSONResponse(resp.json())
+
+
+@app.get("/search")
+async def search(q: str = ""):
+    q = q.strip()
+    if not q:
+        return JSONResponse({"message": "missing query parameter 'q'"}, status_code=400)
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(f"{SEARCH_API_URL}/search", params={"q": q})
+
+    if not resp.is_success:
+        return JSONResponse(resp.json(), status_code=resp.status_code)
+
+    results = resp.json().get("results", [])
+
+    # Deduplicate by image_key, keeping the highest-scoring hit per key.
+    # AOSS uses auto-generated doc IDs so re-uploading the same image creates
+    # multiple documents — deduplication is handled here rather than at ingest.
+    seen: dict = {}
+    for r in results:
+        key = r["key"]
+        if key not in seen or r["score"] > seen[key]["score"]:
+            seen[key] = r
+    results = list(seen.values())
+
+    s3 = _get_s3()
+    for result in results:
+        result["url"] = s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": S3_BUCKET, "Key": result["key"]},
+            ExpiresIn=3600,
+        )
+    return JSONResponse(results)
+
+
+@app.post("/search-by-image")
+async def search_by_image(file: UploadFile = File(...)):
+    content = await file.read()
+    rek_resp = _get_rekognition().detect_labels(
+        Image={"Bytes": content},
+        MaxLabels=10,
+        MinConfidence=75,
+    )
+    labels = [l["Name"] for l in rek_resp["Labels"]]
+    if not labels:
+        return JSONResponse({"labels": [], "results": []})
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(f"{SEARCH_API_URL}/search", params={"q": ", ".join(labels)})
+
+    if not resp.is_success:
+        return JSONResponse(resp.json(), status_code=resp.status_code)
+
+    results = resp.json().get("results", [])
+    seen: dict = {}
+    for r in results:
+        key = r["key"]
+        if key not in seen or r["score"] > seen[key]["score"]:
+            seen[key] = r
+    results = list(seen.values())
+
+    s3 = _get_s3()
+    for result in results:
+        result["url"] = s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": S3_BUCKET, "Key": result["key"]},
+            ExpiresIn=3600,
+        )
+    return JSONResponse({"labels": labels, "results": results})
