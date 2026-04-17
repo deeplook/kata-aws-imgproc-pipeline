@@ -1,4 +1,4 @@
-# kata-aws-imgproc-pipeline
+# AWS Serverless AI Photo Gallery — Kata
 
 [![Build](https://github.com/deeplook/kata-aws-imgproc-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/deeplook/kata-aws-imgproc-pipeline/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/deeplook/kata-aws-imgproc-pipeline?label=Release&style=flat)](https://github.com/deeplook/kata-aws-imgproc-pipeline/releases)
