@@ -127,10 +127,10 @@ resource "aws_lambda_function" "ingest" {
 
   environment {
     variables = {
-      TABLE_NAME           = var.table_name
-      OPENSEARCH_ENDPOINT  = aws_opensearchserverless_collection.gallery.collection_endpoint
-      COLLECTION_NAME      = var.collection_name
-      AWS_REGION_NAME      = var.aws_region
+      TABLE_NAME          = var.table_name
+      OPENSEARCH_ENDPOINT = aws_opensearchserverless_collection.gallery.collection_endpoint
+      COLLECTION_NAME     = var.collection_name
+      AWS_REGION_NAME     = var.aws_region
     }
   }
 }
