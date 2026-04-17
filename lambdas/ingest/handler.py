@@ -42,24 +42,27 @@ def _ensure_index(client):
     if client.indices.exists(index=INDEX_NAME):
         return
     try:
-        client.indices.create(index=INDEX_NAME, body={
-            "settings": {"index": {"knn": True}},
-            "mappings": {
-                "properties": {
-                    "image_key": {"type": "keyword"},
-                    "labels":    {"type": "keyword"},
-                    "embedding": {
-                        "type": "knn_vector",
-                        "dimension": 1024,
-                        "method": {
-                            "name":       "hnsw",
-                            "space_type": "cosinesimil",
-                            "engine":     "nmslib",
+        client.indices.create(
+            index=INDEX_NAME,
+            body={
+                "settings": {"index": {"knn": True}},
+                "mappings": {
+                    "properties": {
+                        "image_key": {"type": "keyword"},
+                        "labels": {"type": "keyword"},
+                        "embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1024,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "nmslib",
+                            },
                         },
-                    },
-                }
+                    }
+                },
             },
-        })
+        )
         print(f"OpenSearch: index '{INDEX_NAME}' created")
     except Exception as e:
         # Concurrent Lambda invocations may both attempt index creation;
@@ -96,11 +99,13 @@ def lambda_handler(event, context):
         # Stage 3: DynamoDB
         dynamodb = boto3.resource("dynamodb")
         table = dynamodb.Table(os.environ["TABLE_NAME"])
-        table.put_item(Item={
-            "image_key": object_key,
-            "labels": label_names,
-            "upload_timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        table.put_item(
+            Item={
+                "image_key": object_key,
+                "labels": label_names,
+                "upload_timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         print("DynamoDB: record written")
 
         # Stage 4: Bedrock embeddings
@@ -128,19 +133,26 @@ def lambda_handler(event, context):
         # Stage 5: OpenSearch indexing
         os_client = _get_opensearch_client()
         _ensure_index(os_client)
-        os_client.index(index=INDEX_NAME, body={
-            "image_key": object_key,
-            "labels":    label_names,
-            "embedding": embedding,
-        })
+        os_client.index(
+            index=INDEX_NAME,
+            body={
+                "image_key": object_key,
+                "labels": label_names,
+                "embedding": embedding,
+            },
+        )
         print("OpenSearch: indexed")
 
-        print(json.dumps({
-            "key": object_key,
-            "labels": label_names,
-            "dimensions": len(embedding),
-            "indexed": True,
-        }))
+        print(
+            json.dumps(
+                {
+                    "key": object_key,
+                    "labels": label_names,
+                    "dimensions": len(embedding),
+                    "indexed": True,
+                }
+            )
+        )
         return {"statusCode": 200, "body": json.dumps({"key": object_key, "labels": label_names})}
 
     except ClientError as e:

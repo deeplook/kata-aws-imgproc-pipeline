@@ -58,21 +58,30 @@ def _search_by_labels(client, query: str) -> list[dict]:
     for term in terms:
         # Rekognition labels are stored as keyword arrays, so prefer exact
         # case variants first, then allow substring matches for looser queries.
-        should.extend([
-            {"term": {"labels": {"value": term, "boost": 6}}},
-            {"term": {"labels": {"value": term.title(), "boost": 8}}},
-            {"wildcard": {"labels": {"value": f"*{term}*", "case_insensitive": True, "boost": 2}}},
-        ])
+        should.extend(
+            [
+                {"term": {"labels": {"value": term, "boost": 6}}},
+                {"term": {"labels": {"value": term.title(), "boost": 8}}},
+                {
+                    "wildcard": {
+                        "labels": {"value": f"*{term}*", "case_insensitive": True, "boost": 2}
+                    }
+                },
+            ]
+        )
 
-    search_response = client.search(index=INDEX_NAME, body={
-        "size": TEXT_RESULT_LIMIT,
-        "query": {
-            "bool": {
-                "should": should,
-                "minimum_should_match": 1,
-            }
+    search_response = client.search(
+        index=INDEX_NAME,
+        body={
+            "size": TEXT_RESULT_LIMIT,
+            "query": {
+                "bool": {
+                    "should": should,
+                    "minimum_should_match": 1,
+                }
+            },
         },
-    })
+    )
 
     return [
         {
@@ -95,17 +104,20 @@ def _search_by_embedding(client, query: str) -> list[dict]:
     query_embedding = json.loads(response["body"].read())["embedding"]
     print(f"query embedding: {len(query_embedding)} dimensions")
 
-    search_response = client.search(index=INDEX_NAME, body={
-        "size": VECTOR_RESULT_LIMIT,
-        "query": {
-            "knn": {
-                "embedding": {
-                    "vector": query_embedding,
-                    "k": VECTOR_RESULT_LIMIT,
+    search_response = client.search(
+        index=INDEX_NAME,
+        body={
+            "size": VECTOR_RESULT_LIMIT,
+            "query": {
+                "knn": {
+                    "embedding": {
+                        "vector": query_embedding,
+                        "k": VECTOR_RESULT_LIMIT,
+                    }
                 }
-            }
+            },
         },
-    })
+    )
 
     return [
         {
@@ -121,7 +133,11 @@ def lambda_handler(event, context):
     if event.get("rawPath", "").endswith("/count"):
         try:
             client = _get_opensearch_client()
-            count = client.count(index=INDEX_NAME)["count"] if client.indices.exists(index=INDEX_NAME) else 0
+            count = (
+                client.count(index=INDEX_NAME)["count"]
+                if client.indices.exists(index=INDEX_NAME)
+                else 0
+            )
             return {"statusCode": 200, "body": json.dumps({"count": count})}
         except Exception as e:
             print(f"Count error: {e}")

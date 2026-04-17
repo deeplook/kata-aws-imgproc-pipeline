@@ -3,6 +3,7 @@ Minimal handler tests using moto for AWS service mocks.
 OpenSearch is patched at the client level (no moto support).
 Bedrock is patched at the client level (Titan Embed Image not in moto).
 """
+
 import importlib.util
 import json
 import sys
@@ -16,6 +17,7 @@ from moto import mock_aws
 # ---------------------------------------------------------------------------
 # Load both Lambda handlers under distinct module names to avoid collision
 # ---------------------------------------------------------------------------
+
 
 def _load(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -39,12 +41,14 @@ IMAGE_KEY = "photo.jpg"
 FAKE_EMBEDDING = [0.1] * 1024
 
 S3_EVENT = {
-    "Records": [{
-        "s3": {
-            "bucket": {"name": BUCKET},
-            "object": {"key": IMAGE_KEY},
+    "Records": [
+        {
+            "s3": {
+                "bucket": {"name": BUCKET},
+                "object": {"key": IMAGE_KEY},
+            }
         }
-    }]
+    ]
 }
 
 # ---------------------------------------------------------------------------
@@ -123,8 +127,10 @@ def test_ingest_writes_dynamodb_record():
     def _client(service, **kw):
         return mock_bedrock if service == "bedrock-runtime" else _real_client(service, **kw)
 
-    with patch.object(ingest, "_get_opensearch_client", return_value=mock_os), \
-         patch("boto3.client", side_effect=_client):
+    with (
+        patch.object(ingest, "_get_opensearch_client", return_value=mock_os),
+        patch("boto3.client", side_effect=_client),
+    ):
         response = ingest.lambda_handler(S3_EVENT, None)
 
     assert response["statusCode"] == 200
