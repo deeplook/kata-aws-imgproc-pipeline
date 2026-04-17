@@ -1,5 +1,6 @@
 # kata-aws-imgproc-pipeline
 
+[![Build](https://github.com/deeplook/kata-aws-imgproc-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/deeplook/kata-aws-imgproc-pipeline/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/deeplook/kata-aws-imgproc-pipeline?label=Release&style=flat)](https://github.com/deeplook/kata-aws-imgproc-pipeline/releases)
 [![License](https://img.shields.io/github/license/deeplook/kata-aws-imgproc-pipeline?label=License&style=flat)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white&style=flat)](https://www.python.org)
@@ -12,7 +13,7 @@ A progressive AWS kata for building a serverless semantic photo pipeline, from a
 ## Branches
 
 - `main`: learner branch with staged stubs, placeholders, and kata instructions
-- `solution`: completed reference implementation, including the optional App Runner gallery frontend
+- `solution`: completed reference implementation, including the App Runner gallery frontend
 
 If you want to do the exercise, stay on `main`.
 If you want the finished reference, inspect `solution`.
@@ -45,7 +46,7 @@ This kata currently uses **OpenSearch Serverless** for vector search.
 That is convenient for the exercise, but expensive for casual experimentation.
 
 `COSTS.md` currently estimates the default stack at roughly **$700/month idle**, mostly from AOSS capacity.
-Do not run `make deploy` until you have read [COSTS.md](/Users/dinugherman/dev/kata-aws-imgproc-pipeline/COSTS.md) and decided that cost is acceptable for your use case.
+Do not run `make deploy` until you have read `COSTS.md` and decided that cost is acceptable for your use case.
 
 ## Prerequisites
 
@@ -67,7 +68,7 @@ make install
 make setup
 ```
 
-Then work through [KATA.md](/Users/dinugherman/dev/kata-aws-imgproc-pipeline/KATA.md) stage by stage.
+Then work through `KATA.md` stage by stage.
 
 For the completed flow on `solution`:
 
@@ -76,6 +77,7 @@ make install
 make deploy
 make upload
 make search QUERY=beach
+make smoke-frontend
 make destroy
 ```
 
@@ -97,8 +99,10 @@ The `solution` branch additionally includes a frontend stage built on App Runner
 
 ## Repository Guide
 
-- [KATA.md](/Users/dinugherman/dev/kata-aws-imgproc-pipeline/KATA.md): full stage-by-stage exercise
-- [COSTS.md](/Users/dinugherman/dev/kata-aws-imgproc-pipeline/COSTS.md): cost analysis and cheaper alternatives
+- `KATA.md`: full stage-by-stage exercise
+- `COSTS.md`: cost analysis and cheaper alternatives
+- `docs/architecture.md`: visual overview of the completed solution branch
+- `docs/terraform-modules.md`: generated module graph from `terraform/main.tf`
 - `terraform/`: infrastructure modules
 - `lambdas/`: ingest and search handlers
 - `app/`: gallery frontend used by the `solution` branch
