@@ -8,5 +8,8 @@ dev-dependencies = [
     "ruff>=0.4.0",
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 100
