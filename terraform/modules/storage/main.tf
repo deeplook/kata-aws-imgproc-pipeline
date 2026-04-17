@@ -10,7 +10,7 @@ terraform {
 
 resource "aws_s3_bucket" "images" {
   bucket        = var.bucket_name
-  force_destroy = true  # allows destroy even when the bucket contains objects
+  force_destroy = true # allows destroy even when the bucket contains objects
 }
 
 resource "aws_dynamodb_table" "metadata" {

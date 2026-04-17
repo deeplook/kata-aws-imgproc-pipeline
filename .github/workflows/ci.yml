@@ -44,5 +44,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
       - run: terraform fmt -check -recursive
+      # Stubs on main use ??? placeholders that fail validation; validate solution only
       - run: terraform init -backend=false
+        if: github.ref == 'refs/heads/solution' || (github.event_name == 'pull_request' && github.base_ref == 'solution')
       - run: terraform validate
+        if: github.ref == 'refs/heads/solution' || (github.event_name == 'pull_request' && github.base_ref == 'solution')
