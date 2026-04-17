@@ -8,6 +8,7 @@ QUERY ?= beach
 help:
 	@echo "Targets:"
 	@echo "  install        Install Python dependencies with uv"
+	@echo "  test           Run the local Python test suite"
 	@echo "  fmt            Format Terraform code"
 	@echo "  validate       Validate Terraform configuration"
 	@echo "  plan           Create a Terraform execution plan"
@@ -30,6 +31,10 @@ help:
 .PHONY: install
 install:
 	uv sync
+
+.PHONY: test
+test:
+	uv run pytest
 
 .PHONY: fmt
 fmt:
